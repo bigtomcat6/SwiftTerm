@@ -137,11 +137,18 @@ struct MouseTrackingTests {
         in window: NSWindow,
         modifiers: NSEvent.ModifierFlags = []
     ) throws -> NSEvent {
+        // NSEvent has no setter for buttonNumber, so the button change has to
+        // go through CGEvent. Re-wrapping a window-backed event makes AppKit
+        // recompute locationInWindow from screen coordinates; for a headless
+        // window that was never ordered that is not the point passed here.
+        // Build button events windowless so the point survives the re-wrap.
+        let keepsWindowPoint = type == .leftMouseDown || type == .leftMouseUp
         let event = try #require(NSEvent.mouseEvent(
             with: type, location: point, modifierFlags: modifiers, timestamp: 0,
-            windowNumber: window.windowNumber, context: nil,
+            windowNumber: keepsWindowPoint ? window.windowNumber : 0, context: nil,
             eventNumber: 1, clickCount: 1, pressure: 1
         ))
+        if keepsWindowPoint { return event }
         let cgEvent = try #require(event.cgEvent)
         cgEvent.setIntegerValueField(.mouseEventButtonNumber, value: Int64(buttonNumber))
         return try #require(NSEvent(cgEvent: cgEvent))
@@ -294,12 +301,16 @@ struct MouseTrackingTests {
         view.feed(text: String(repeating: "row\r\n", count: 100))
 
         func mouseEvent(_ type: NSEvent.EventType, at point: CGPoint) throws -> NSEvent {
+            // See appKitMouseEvent: a CGEvent re-wrap changes
+            // locationInWindow for a window that was never ordered, so only
+            // windowless button events keep the requested point.
+            let keepsWindowPoint = type == .leftMouseDown || type == .leftMouseUp
             let event = try #require(NSEvent.mouseEvent(
                 with: type, location: point, modifierFlags: [], timestamp: 0,
-                windowNumber: window.windowNumber, context: nil,
+                windowNumber: keepsWindowPoint ? window.windowNumber : 0, context: nil,
                 eventNumber: 1, clickCount: 1, pressure: 1
             ))
-            if type == .leftMouseDown || type == .leftMouseUp { return event }
+            if keepsWindowPoint { return event }
             let cgEvent = try #require(event.cgEvent)
             cgEvent.setIntegerValueField(.mouseEventButtonNumber, value: 1)
             return try #require(NSEvent(cgEvent: cgEvent))

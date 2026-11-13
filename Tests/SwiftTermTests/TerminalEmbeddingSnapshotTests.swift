@@ -124,10 +124,12 @@ struct TerminalEmbeddingSnapshotTests {
         let owner = view.renderOwner
         let copied = DispatchSemaphore(value: 0)
         owner.withSnapshotForDrawing(viewState: FrameViewState(view: view)) { _, _ in
-            DispatchQueue.global().async {
+            // Own the copy thread: a shared global-queue worker can be starved
+            // by other parallel suites before the two-second bound.
+            Thread {
                 #expect(owner.contentSnapshot(region: .viewport) != nil)
                 copied.signal()
-            }
+            }.start()
             #expect(copied.wait(timeout: .now() + 2) == .success)
         }
     }

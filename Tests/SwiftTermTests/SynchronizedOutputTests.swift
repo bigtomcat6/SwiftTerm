@@ -406,12 +406,14 @@ final class SynchronizedOutputTests {
             }
         }
 
-        DispatchQueue.global().async {
+        // Own the feeder thread: a shared global-queue worker can be starved
+        // by other parallel suites before the two-second bound.
+        Thread {
             access.withLock { terminal in
                 terminal.feed(text: "\(esc)[?2026h")
             }
             finished.signal()
-        }
+        }.start()
 
         #expect(finished.wait(timeout: .now() + 2) == .success)
         #expect(terminal.terminalLock.withLock { terminal.synchronizedOutputActive })
